@@ -83,8 +83,9 @@ def _match(raw: str, idx: ArtistIndex) -> tuple[Artist | None, float]:
 
     Estratégias em ordem decrescente de confiança:
       1.0 — match exato após normalização
-      0.9 — um contém o outro (mínimo 4 chars)
-      0.7 — primeira palavra do raw bate com início da chave (mín. 5 chars)
+      0.9 — todos os tokens do nome menor estão no nome maior (ambos ≥ 2 tokens)
+             Ex.: "Diego Victor Hugo" casa com "Diego & Victor Hugo" ✓
+                  "Diego" (1 token) NÃO casa com "Diego & Victor Hugo" ✗
     """
     norm = _normalize(raw)
     if not norm:
@@ -94,17 +95,16 @@ def _match(raw: str, idx: ArtistIndex) -> tuple[Artist | None, float]:
     if norm in idx:
         return idx[norm], 1.0
 
-    # 2. Contém
-    for key, artist in idx.items():
-        if len(key) >= 4 and (key in norm or norm in key):
-            return artist, 0.9
-
-    # 3. Primeira palavra
-    words = norm.split()
-    if words and len(words[0]) >= 5:
+    # 2. Sobreposição de tokens — exige ≥ 2 tokens no nome menor para evitar
+    #    que um único primeiro nome case com qualquer dupla/banda que o contenha.
+    norm_tokens = set(norm.split())
+    if len(norm_tokens) >= 2:
         for key, artist in idx.items():
-            if key.startswith(words[0]):
-                return artist, 0.7
+            key_tokens = set(key.split())
+            shorter = norm_tokens if len(norm_tokens) <= len(key_tokens) else key_tokens
+            longer = key_tokens if len(norm_tokens) <= len(key_tokens) else norm_tokens
+            if len(shorter) >= 2 and shorter.issubset(longer):
+                return artist, 0.9
 
     return None, 0.0
 

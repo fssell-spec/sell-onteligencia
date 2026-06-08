@@ -50,7 +50,8 @@ def _match_municipality(raw: str, idx: dict[str, Municipality]) -> tuple[Municip
     """Retorna (Municipality, confidence) ou (None, 0.0).
     Estratégias:
       1.0 — match exato
-      0.9 — um contém o outro (mínimo 5 chars para evitar falsos positivos)
+      0.9 — sobreposição de tokens: todos os tokens do nome menor estão no maior,
+             com mínimo de 2 tokens para evitar "Lagoas" casar com "Três Lagoas"
     """
     norm = _normalize(raw)
     if not norm or len(norm) < 4:
@@ -59,10 +60,13 @@ def _match_municipality(raw: str, idx: dict[str, Municipality]) -> tuple[Municip
     if norm in idx:
         return idx[norm], 1.0
 
+    norm_tokens = set(norm.split())
     for key, muni in idx.items():
-        if len(key) >= 5 and len(norm) >= 5:
-            if key in norm or norm in key:
-                return muni, 0.9
+        key_tokens = set(key.split())
+        shorter = norm_tokens if len(norm_tokens) <= len(key_tokens) else key_tokens
+        longer = key_tokens if len(norm_tokens) <= len(key_tokens) else norm_tokens
+        if len(shorter) >= 2 and shorter.issubset(longer):
+            return muni, 0.9
 
     return None, 0.0
 
