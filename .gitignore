@@ -1,0 +1,36 @@
+# Secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Playwright
+.playwright-mcp/
+
+# Binaries / installers
+*.exe
+*.msi
+
+# Logs / temp
+*.log
+*.tmp
+
+# IDE
+.claude/
+.idea/
+.vscode/
+
+# Data dumps
+data/
+
+# Scan / output files
+scan*.txt
+scan*.json
+amambai_text.txt
+top_oportunidades.html
