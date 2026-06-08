@@ -728,17 +728,56 @@ with tab_tabela:
         }
     )
 
-    st.caption(f"{len(exibir_fmt)} municípios exibidos")
-    st.dataframe(
-        exibir_fmt,
+    st.caption(f"{len(exibir_fmt)} municípios exibidos — clique em uma linha para ver artistas e contratos")
+    _exibir_fmt_r = exibir_fmt.reset_index(drop=True)
+    _muni_sel_ev = st.dataframe(
+        _exibir_fmt_r,
         use_container_width=True,
-        height=560,
+        height=520,
+        on_select="rerun",
+        selection_mode="single-row",
+        key="muni_table_sel",
         column_config={
             "População": st.column_config.NumberColumn(format="%d"),
             "Área (km²)": st.column_config.NumberColumn(format="%.0f"),
             "Dens. (hab/km²)": st.column_config.NumberColumn(format="%.1f"),
         },
     )
+
+    if _muni_sel_ev.selection.rows:
+        _m_idx = _muni_sel_ev.selection.rows[0]
+        _m_nome = _exibir_fmt_r.iloc[_m_idx]["Município"]
+        _df_muni_detail = load_artist_contracts_detail()
+        _det_muni = _df_muni_detail[_df_muni_detail["municipio"] == _m_nome].copy()
+        with st.container(border=True):
+            st.markdown(f"#### {_m_nome} — Artistas e Contratos")
+            if _det_muni.empty:
+                st.info("Nenhuma aparição de artista registrada para este município.")
+            else:
+                _FONTE_LM = {"pncp": "PNCP", "doe": "DOE/MS", "diogrande": "DIOGRANDE"}
+                _det_muni["Fonte"] = _det_muni["fonte"].map(_FONTE_LM).fillna(_det_muni["fonte"])
+                _mc1, _mc2, _mc3 = st.columns(3)
+                _mc1.metric("Aparições", len(_det_muni))
+                _mc2.metric("Artistas únicos", _det_muni["artista"].nunique())
+                _com_val_m = _det_muni["cache_real"].notna()
+                _mc3.metric(
+                    "Valor total",
+                    f"R$ {_det_muni.loc[_com_val_m, 'cache_real'].sum():,.0f}".replace(",", ".")
+                    if _com_val_m.any() else "—",
+                )
+                st.dataframe(
+                    _det_muni[["artista", "Fonte", "cache_real", "data_show", "data_contrato", "descricao"]].rename(columns={
+                        "artista": "Artista",
+                        "cache_real": "Cachê (R$)",
+                        "data_show": "Data Show",
+                        "data_contrato": "Data Publ.",
+                        "descricao": "Trecho",
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=280,
+                    column_config={"Cachê (R$)": st.column_config.NumberColumn(format="R$ %.0f")},
+                )
 
     csv = exibir_fmt.to_csv(index=False, sep=";").encode("utf-8-sig")
     st.download_button(
@@ -954,17 +993,63 @@ with tab_contratos:
         .sort_values("Valor (R$)", ascending=False)
     )
 
-    st.caption(f"{len(show_k)} contratos exibidos")
-    st.dataframe(
-        show_k,
+    st.caption(f"{len(show_k)} contratos exibidos — clique em uma linha para ver artista e município")
+    _show_k_r = show_k.reset_index(drop=True)
+    _contract_sel_ev = st.dataframe(
+        _show_k_r,
         use_container_width=True,
         height=480,
+        on_select="rerun",
+        selection_mode="single-row",
+        key="contract_table_sel",
         column_config={
             "Valor (R$)": st.column_config.NumberColumn(format="R$ %.0f"),
             "Publicação": st.column_config.DateColumn(format="DD/MM/YYYY"),
             "Data Evento": st.column_config.DateColumn(format="DD/MM/YYYY"),
         },
     )
+
+    if _contract_sel_ev.selection.rows:
+        _c_idx = _contract_sel_ev.selection.rows[0]
+        _c_row = _show_k_r.iloc[_c_idx]
+        _c_muni = _c_row["Município"]
+        _df_contract_detail = load_artist_contracts_detail()
+        _det_cont = _df_contract_detail[_df_contract_detail["municipio"] == _c_muni].copy() if _c_muni != "—" else pd.DataFrame()
+        _muni_info = df[df["nome"] == _c_muni]
+        with st.container(border=True):
+            _cdc1, _cdc2 = st.columns([3, 1])
+            with _cdc1:
+                _tipo_str = str(_c_row.get("Tipo", "")).strip()
+                _forn_str = str(_c_row.get("Fornecedor", "")).strip()
+                st.markdown(f"#### {_c_muni} — {_tipo_str}")
+                if not _muni_info.empty:
+                    _mi = _muni_info.iloc[0]
+                    st.caption(f"{_mi['mesorregiao']} | {_mi['populacao']:,} hab. | {_mi['porte']}".replace(",", "."))
+                if _forn_str:
+                    st.write(f"**Fornecedor:** {_forn_str}")
+            with _cdc2:
+                _val = _c_row.get("Valor (R$)", 0)
+                if _val and _val > 0:
+                    st.metric("Valor", f"R$ {_val:,.0f}".replace(",", "."))
+            if _det_cont.empty:
+                st.info("Nenhum artista identificado em contratos deste município." if _c_muni != "—" else "Contrato sem município vinculado.")
+            else:
+                st.markdown("**Artistas com aparições neste município:**")
+                _FONTE_LC = {"pncp": "PNCP", "doe": "DOE/MS", "diogrande": "DIOGRANDE"}
+                _det_cont["Fonte"] = _det_cont["fonte"].map(_FONTE_LC).fillna(_det_cont["fonte"])
+                st.dataframe(
+                    _det_cont[["artista", "Fonte", "cache_real", "data_show", "data_contrato", "descricao"]].rename(columns={
+                        "artista": "Artista",
+                        "cache_real": "Cachê (R$)",
+                        "data_show": "Data Show",
+                        "data_contrato": "Data Publ.",
+                        "descricao": "Trecho",
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=250,
+                    column_config={"Cachê (R$)": st.column_config.NumberColumn(format="R$ %.0f")},
+                )
 
     csv_k = show_k.to_csv(index=False, sep=";").encode("utf-8-sig")
     st.download_button(
@@ -1075,17 +1160,67 @@ with tab_artistas:
         "municipios": "Municípios",
     }).sort_values(["Aparições", "Valor (R$)"], ascending=False)
 
-    st.caption(f"{len(show_a)} artistas exibidos")
-    st.dataframe(
-        show_a,
+    st.caption(f"{len(show_a)} artistas exibidos — clique em uma linha para ver contratos e municípios")
+    _show_a_r = show_a.reset_index(drop=True)
+    _artist_sel_ev = st.dataframe(
+        _show_a_r,
         use_container_width=True,
         height=520,
+        on_select="rerun",
+        selection_mode="single-row",
+        key="artist_table_sel",
         column_config={
             "Valor (R$)": st.column_config.NumberColumn(format="R$ %.0f"),
             "Aparições": st.column_config.NumberColumn(format="%d"),
-        "Municípios (#)": st.column_config.NumberColumn(format="%d"),
+            "Municípios (#)": st.column_config.NumberColumn(format="%d"),
         },
     )
+
+    if _artist_sel_ev.selection.rows:
+        _a_idx = _artist_sel_ev.selection.rows[0]
+        _a_nome = _show_a_r.iloc[_a_idx]["Artista"]
+        _df_artist_detail = load_artist_contracts_detail()
+        _det_art = _df_artist_detail[_df_artist_detail["artista"] == _a_nome].copy()
+        with st.container(border=True):
+            _a_info = exibir_a[exibir_a["nome"] == _a_nome]
+            if not _a_info.empty:
+                _ai = _a_info.iloc[0]
+                st.markdown(f"#### {_a_nome}")
+                st.caption(
+                    f"{STYLE_LABELS.get(_ai['estilo'], _ai['estilo'])} | "
+                    f"{FEE_TIER_LABELS.get(_ai['cache'], _ai['cache'])} | "
+                    f"{POP_LABELS.get(_ai['popularidade'], _ai['popularidade'])} | "
+                    f"Origem: {_ai['origem_estado'] or '—'}"
+                )
+            else:
+                st.markdown(f"#### {_a_nome}")
+            if _det_art.empty:
+                st.info("Sem aparições registradas.")
+            else:
+                _FONTE_LA = {"pncp": "PNCP", "doe": "DOE/MS", "diogrande": "DIOGRANDE"}
+                _det_art["Fonte"] = _det_art["fonte"].map(_FONTE_LA).fillna(_det_art["fonte"])
+                _com_val_a = _det_art["cache_real"].notna()
+                _aac1, _aac2, _aac3 = st.columns(3)
+                _aac1.metric("Aparições", len(_det_art))
+                _aac2.metric("Municípios", _det_art["municipio"].nunique())
+                _aac3.metric(
+                    "Valor total",
+                    f"R$ {_det_art.loc[_com_val_a, 'cache_real'].sum():,.0f}".replace(",", ".")
+                    if _com_val_a.any() else "—",
+                )
+                st.dataframe(
+                    _det_art[["Fonte", "municipio", "cache_real", "data_show", "data_contrato", "descricao"]].rename(columns={
+                        "municipio": "Município",
+                        "cache_real": "Cachê (R$)",
+                        "data_show": "Data Show",
+                        "data_contrato": "Data Publ.",
+                        "descricao": "Trecho",
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=300,
+                    column_config={"Cachê (R$)": st.column_config.NumberColumn(format="R$ %.0f")},
+                )
 
     csv_a = show_a.to_csv(index=False, sep=";").encode("utf-8-sig")
     st.download_button(
